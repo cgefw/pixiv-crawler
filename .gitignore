@@ -1,0 +1,6 @@
+.env
+pixiv_downloads/
+.progress.json
+*.tmp
+__pycache__/
+.DS_Store
