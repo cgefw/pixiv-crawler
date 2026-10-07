@@ -63,7 +63,7 @@ python3 pixiv_crawler.py 鹿乃 --resume         # 从上次出错处继续
 | `--save-dir` | 保存根目录（按关键词建子目录） | `~/pixiv_downloads` |
 | `--workers` | 下载并发线程数 | `4` |
 | `--search-workers` | 搜索并发线程数 | `3` |
-| `--delay` | 每次请求间隔秒数 | `0.5` |
+| `--delay` | 每次请求前等待的秒数（每个线程分别计算） | `0.5` |
 | `--cookie` | PHPSESSID，多个用逗号分隔 | 无 |
 
 ### 交互模式
@@ -155,7 +155,7 @@ python3 pixiv_crawler.py 鹿乃 --resume         # resume from last saved progre
 | `--save-dir` | Output root dir (subdirectory per keyword) | `~/pixiv_downloads` |
 | `--workers` | Download threads | `4` |
 | `--search-workers` | Search threads | `3` |
-| `--delay` | Delay between requests (seconds) | `0.5` |
+| `--delay` | Seconds each thread waits before every request | `0.5` |
 | `--cookie` | PHPSESSID(s), comma-separated | none |
 
 ### Interactive mode

@@ -152,6 +152,7 @@ def request(url, timeout=60, retries=3):
     last_err = None
     use_pool = POOL and "pixiv.net" in url
     for _ in range(retries):
+        time.sleep(DELAY)
         s = POOL.acquire() if use_pool else None
         headers = {"User-Agent": UA, "Referer": BASE + "/"}
         if s:
@@ -168,12 +169,10 @@ def request(url, timeout=60, retries=3):
                 POOL.mark_failure(s)
             if e.code in (403, 429, 500, 502, 503):
                 last_err = e
-                time.sleep(DELAY)
                 continue
             raise
         except (urllib.error.URLError, socket.timeout, OSError) as e:
             last_err = e
-            time.sleep(DELAY)
     raise last_err
 
 
@@ -250,7 +249,6 @@ def download_artwork(iid, save_dir):
             path = os.path.join(save_dir, f"{iid}_p{i}{ext_of(u)}")
             if download_image(u, path):
                 n += 1
-                time.sleep(DELAY)
         return iid, True, f"作品 {iid}: 下载 {n}/{len(urls)} 张 / {n}/{len(urls)} image(s)"
     except Exception as e:
         return iid, False, f"作品 {iid}: 失败 / failed - {e}"
@@ -304,12 +302,16 @@ def main():
                     help="PHPSESSID, 多个用逗号分隔 / comma-separated for multi-account; "
                         "也可用 .env / 环境变量 / or use .env, env var")
     ap.add_argument("--delay", type=float, default=0.5,
-                    help="请求间隔秒数 / delay between requests in seconds, 默认 default 0.5")
+                    help="每个线程每次请求前等待的秒数 / seconds each thread waits before "
+                         "every request, 默认 default 0.5")
     ap.add_argument("--workers", type=int, default=4,
                     help="下载并发线程数 / download threads, 默认 default 4")
     ap.add_argument("--search-workers", type=int, default=3,
                     help="搜索并发线程数 / search threads, 默认 default 3")
     args = ap.parse_args()
+
+    if not 0 <= args.delay < float("inf"):
+        ap.error("--delay 必须是非负有限数 / --delay must be a finite number >= 0")
 
     global DELAY, POOL
     DELAY = args.delay
