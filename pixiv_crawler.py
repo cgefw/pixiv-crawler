@@ -21,6 +21,7 @@ Log in to pixiv.net -> F12 -> Network -> refresh -> any request ->
 find PHPSESSID=xxx in the Cookie request header.
 """
 import argparse
+import http.client
 import json
 import os
 import re
@@ -165,13 +166,14 @@ def request(url, timeout=60, retries=3):
                 POOL.mark_success(s)
             return data
         except urllib.error.HTTPError as e:
-            if s:
+            if s and e.code in (401, 403, 429):
                 POOL.mark_failure(s)
             if e.code in (403, 429, 500, 502, 503):
                 last_err = e
                 continue
             raise
-        except (urllib.error.URLError, socket.timeout, OSError) as e:
+        except (urllib.error.URLError, socket.timeout, OSError,
+                http.client.HTTPException) as e:
             last_err = e
     raise last_err
 
@@ -206,7 +208,12 @@ def search_task(keyword, page):
 
 
 def page_urls(illust_id):
-    data = fetch_json(f"{BASE}/ajax/illust/{illust_id}/pages")
+    try:
+        data = fetch_json(f"{BASE}/ajax/illust/{illust_id}/pages")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return []
+        raise
     if data.get("error"):
         return []
     return [p["urls"]["original"] for p in data["body"]]
@@ -239,7 +246,7 @@ def download_artwork(iid, save_dir):
     try:
         urls = page_urls(iid)
         if not urls:
-            return iid, True, f"跳过 {iid}: 无原图 / skip {iid}: no original image"
+            return iid, True, f"跳过 {iid}: 无原图或已删除 / skip {iid}: no original image or deleted"
         n = 0
         for i, u in enumerate(urls):
             path = os.path.join(save_dir, f"{iid}_p{i}{ext_of(u)}")
