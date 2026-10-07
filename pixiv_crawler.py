@@ -195,6 +195,10 @@ def search_page(keyword, page):
     return manga.get("data") or [], manga.get("total") or 0
 
 
+def page_count(total):
+    return (total + 59) // 60
+
+
 def search_task(keyword, page):
     if STOP_SEARCH.is_set():
         return page, None, None, "cancelled"
@@ -366,10 +370,26 @@ def main():
     artworks, total, had_error, interrupted = [], 0, False, False
     if pages_to_search:
         with ThreadPoolExecutor(max_workers=args.search_workers) as pool:
-            futures = {pool.submit(search_task, keyword, p): p
-                       for p in pages_to_search}
             got = 0
             try:
+                # 先搜第一页拿到总数, 超过最大页的不再请求 / probe one page for the total,
+                # then skip pages past the last one instead of requesting them all
+                first = pool.submit(search_task, keyword, pages_to_search[0])
+                _, data, t, err = first.result()
+                rest = [] if err else pages_to_search[1:]
+                if t or data == []:
+                    max_pages = page_count(t)
+                    if start > max_pages:
+                        print(f"没有更多作品: 共 {max_pages} 页, 起始页为 {start} / "
+                              f"nothing to fetch: {max_pages} page(s), start page {start}",
+                              flush=True)
+                        end = start
+                    elif end > max_pages:
+                        print(f"该关键词共 {max_pages} 页, 已自动截断 / "
+                              f"keyword has {max_pages} pages max; truncated", flush=True)
+                        end = max_pages
+                    rest = [p for p in rest if p <= end]
+                futures = [first] + [pool.submit(search_task, keyword, p) for p in rest]
                 for fut in as_completed(futures):
                     page, data, t, err = fut.result()
                     got += 1
@@ -383,11 +403,6 @@ def main():
                         continue
                     if t and not total:
                         total = t
-                        max_pages = (total + 59) // 60
-                        if end > max_pages:
-                            print(f"该关键词共 {max_pages} 页, 已自动截断 / "
-                                  f"keyword has {max_pages} pages max; truncated", flush=True)
-                            end = max_pages
                     artworks.extend(data)
                     pending_ids.update(a["id"] for a in data if a and a.get("id"))
                     done_pages.add(page)
@@ -401,7 +416,7 @@ def main():
                       file=sys.stderr, flush=True)
 
     if total:
-        max_pages = (total + 59) // 60
+        max_pages = page_count(total)
         print(f"共 {total} 个作品, 最大 {max_pages} 页, 目标范围 {start}~{end} 页 / "
               f"{total} artworks total, max {max_pages} pages, target {start}-{end}")
 
