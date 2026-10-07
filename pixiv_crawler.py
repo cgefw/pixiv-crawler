@@ -10,7 +10,7 @@
     python3 pixiv_crawler.py 鹿乃 --resume         # 从上次出错处继续 / resume from last progress
 
 Cookie (PHPSESSID) 提供方式, 可多个轮询 / Provide one or more PHPSESSID cookies:
-    1. .env 文件:  PIXIV_PHPSESSID=A,B,C   (脚本目录或当前目录 / script dir or cwd)
+    1. .env 文件:  PIXIV_PHPSESSID=A,B,C   (脚本所在目录 / next to this script)
     2. 命令行参数:  --cookie A,B,C
     3. 环境变量:    export PIXIV_PHPSESSID=A,B,C
     4. 多账号目录:  ~/.pixiv_cookies/ 下每个文件一个账号 / one account per file
@@ -95,21 +95,20 @@ def read_env_file(path):
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            if line.startswith(("PIXIV_PHPSESSID=", "PHPSESSID=")):
-                val = line.split("=", 1)[1].strip().strip('"').strip("'")
+            m = re.match(r"(?:export\s+)?(?:PIXIV_)?PHPSESSID\s*=(.*)", line)
+            if m:
+                val = re.sub(r"\s+#.*", "", m.group(1)).strip().strip('"').strip("'")
                 sources += [c for c in val.split(",") if c.strip()]
-            else:
+            elif "=" not in line or re.search(r"(?:^|;\s*)PHPSESSID=", line):
+                # 裸值或整段 Cookie, 其他 KEY=value 一律忽略 / bare value or pasted Cookie
+                # header; any other KEY=value line is ignored
                 sources.append(line)
     return sources
 
 
 def env_file_paths():
-    paths = []
-    for p in (os.path.abspath(".env"),
-              os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")):
-        if p not in paths and os.path.isfile(p):
-            paths.append(p)
-    return paths
+    p = os.path.join(os.path.dirname(os.path.realpath(__file__)), ".env")
+    return [p] if os.path.isfile(p) else []
 
 
 def read_cookie_file(path):
