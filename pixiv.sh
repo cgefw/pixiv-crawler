@@ -35,8 +35,12 @@ resume_task() {
     echo
     list=()
     if [ -d "$SAVE_ROOT" ]; then
-        for d in "$SAVE_ROOT"/*/; do
-            [ -f "$d/.progress.json" ] && list+=("$(basename "$d")")
+        for d in "$SAVE_ROOT"/*/ "$SAVE_ROOT"/.[!.]*/ "$SAVE_ROOT"/..?*/; do
+            [ -f "$d/.progress.json" ] || continue
+            # 目录名里的 / 等字符已被替换成 _, 原关键词从进度文件读取 / dir names are sanitized
+            kw=$("$PY" -c 'import json, sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("keyword", ""))' \
+                "$d/.progress.json" 2>/dev/null)
+            list+=("${kw:-$(basename "$d")}")
         done
     fi
     if [ ${#list[@]} -eq 0 ]; then

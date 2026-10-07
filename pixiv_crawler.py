@@ -182,7 +182,7 @@ def fetch_json(url):
 
 
 def search_page(keyword, page):
-    api = BASE + "/ajax/search/artworks/" + urllib.parse.quote(keyword)
+    api = BASE + "/ajax/search/artworks/" + urllib.parse.quote(keyword, safe="")
     qs = urllib.parse.urlencode({
         "word": keyword, "order": "date_d", "mode": "all",
         "s_mode": "tag", "p": page, "type": "all", "lang": "zh",
@@ -336,6 +336,12 @@ def main():
 
     prog = load_progress(save_dir) if args.resume else \
         {"pages_done": [], "done_ids": [], "failed_ids": []}
+    if prog.get("keyword", keyword) != keyword:
+        # 不同关键词清理后可能落到同一目录 / distinct keywords can map to the same dir
+        print(f"错误: {save_dir} 的进度属于关键词 {prog['keyword']!r}, 不能用 {keyword!r} 继续\n"
+              f"Error: progress in {save_dir} belongs to keyword {prog['keyword']!r}, "
+              f"not {keyword!r}", file=sys.stderr)
+        sys.exit(1)
     done_pages = set(prog.get("pages_done", []))
     done_ids = set(prog.get("done_ids", []))
     failed_ids = set(prog.get("failed_ids", []))
