@@ -91,6 +91,8 @@ for kw in 鹿乃 初音ミク; do python3 pixiv_crawler.py "$kw" --pages 3; done
 0 3 * * * /usr/bin/python3 /path/to/pixiv_crawler.py 鹿乃 --pages 3
 ```
 
+退出码：`0` 全部完成；`1` 搜索出错、连续失败停止或有作品下载失败（可用 `--resume` 继续）；`130` 被 Ctrl-C 中断。
+
 ### 免责声明
 
 仅供个人学习使用。请遵守 Pixiv 使用条款，尊重画师版权，不要用于商业用途或大规模抓取，控制请求频率避免给服务器造成负担。
@@ -180,6 +182,8 @@ for kw in 鹿乃 初音ミク; do python3 pixiv_crawler.py "$kw" --pages 3; done
 # cron (use absolute paths)
 0 3 * * * /usr/bin/python3 /path/to/pixiv_crawler.py 鹿乃 --pages 3
 ```
+
+Exit codes: `0` all done; `1` search error, stopped after repeated failures, or some artworks failed (continue with `--resume`); `130` interrupted with Ctrl-C.
 
 ### Disclaimer
 

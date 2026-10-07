@@ -442,7 +442,7 @@ def main():
 
     if had_error:
         q = shlex.quote if os.name != "nt" else (lambda x: f'"{x}"')
-        cmd = f"python3 {os.path.basename(__file__)} {q(keyword)} --resume"
+        cmd = f"python3 {q(sys.argv[0])} {q(keyword)} --resume"
         if args.save_dir != ap.get_default("save_dir"):
             cmd += f" --save-dir {q(args.save_dir)}"
         print(f"搜索出错, 保留进度, 不再继续爬取 / Search error: progress saved, "
@@ -507,11 +507,13 @@ def main():
     if had_error or stopped:
         print(f"已停止, 进度已保存 / Stopped, progress saved. "
               f"继续请运行 --resume, 图片目录 / dir: {save_dir}")
+        sys.exit(1)
     elif failed_ids:
         print(f"完成 (有 {len(failed_ids)} 个失败) / Done with {len(failed_ids)} failure(s). "
               f"图片目录 / dir: {save_dir}")
         print("修复问题后运行 --resume 可继续 / Fix the issue and rerun with --resume",
               flush=True)
+        sys.exit(1)
     else:
         print(f"完成! 图片已保存到 / Done! Saved to: {save_dir}")
 
