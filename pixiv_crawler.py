@@ -168,7 +168,7 @@ def request(url, timeout=60, retries=3):
         except urllib.error.HTTPError as e:
             if s and e.code in (401, 403, 429):
                 POOL.mark_failure(s)
-            if e.code in (403, 429, 500, 502, 503):
+            if e.code in (401, 403, 429, 500, 502, 503):
                 last_err = e
                 continue
             raise
