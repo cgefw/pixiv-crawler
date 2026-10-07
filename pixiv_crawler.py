@@ -354,10 +354,16 @@ def main():
     artworks, total, had_error, interrupted = [], 0, False, False
     if pages_to_search:
         with ThreadPoolExecutor(max_workers=args.search_workers) as pool:
-            futures = {pool.submit(search_task, keyword, p): p
-                       for p in pages_to_search}
             got = 0
             try:
+                # 先搜第一页拿到总数, 超过最大页的不再请求 / probe one page for the total,
+                # then skip pages past the last one instead of requesting them all
+                first = pool.submit(search_task, keyword, pages_to_search[0])
+                _, _, t, err = first.result()
+                rest = [] if err else pages_to_search[1:]
+                if t:
+                    rest = [p for p in rest if p <= (t + 59) // 60]
+                futures = [first] + [pool.submit(search_task, keyword, p) for p in rest]
                 for fut in as_completed(futures):
                     page, data, t, err = fut.result()
                     got += 1
@@ -372,7 +378,11 @@ def main():
                     if t and not total:
                         total = t
                         max_pages = (total + 59) // 60
-                        if end > max_pages:
+                        if start > max_pages:
+                            print(f"起始页 {start} 超过最大页 {max_pages}, 没有更多作品 / "
+                                  f"start page {start} is past the last page ({max_pages})",
+                                  flush=True)
+                        elif end > max_pages:
                             print(f"该关键词共 {max_pages} 页, 已自动截断 / "
                                   f"keyword has {max_pages} pages max; truncated", flush=True)
                             end = max_pages
