@@ -182,7 +182,7 @@ def fetch_json(url):
 
 
 def search_page(keyword, page):
-    api = BASE + "/ajax/search/artworks/" + urllib.parse.quote(keyword)
+    api = BASE + "/ajax/search/artworks/" + urllib.parse.quote(keyword, safe="")
     qs = urllib.parse.urlencode({
         "word": keyword, "order": "date_d", "mode": "all",
         "s_mode": "tag", "p": page, "type": "all", "lang": "zh",
