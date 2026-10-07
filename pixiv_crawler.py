@@ -91,15 +91,22 @@ def read_env_file(path):
     sources = []
     with open(path, encoding="utf-8") as f:
         for line in f:
-            m = re.match(r"(?:export\s+)?(?:PIXIV_)?PHPSESSID\s*=(.*)", line.strip())
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            m = re.match(r"(?:export\s+)?(?:PIXIV_)?PHPSESSID\s*=(.*)", line)
             if m:
-                val = m.group(1).strip().strip('"').strip("'")
+                val = re.sub(r"\s+#.*", "", m.group(1)).strip().strip('"').strip("'")
                 sources += [c for c in val.split(",") if c.strip()]
+            elif "=" not in line or re.search(r"(?:^|;\s*)PHPSESSID=", line):
+                # 裸值或整段 Cookie, 其他 KEY=value 一律忽略 / bare value or pasted Cookie
+                # header; any other KEY=value line is ignored
+                sources.append(line)
     return sources
 
 
 def env_file_paths():
-    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    p = os.path.join(os.path.dirname(os.path.realpath(__file__)), ".env")
     return [p] if os.path.isfile(p) else []
 
 
