@@ -346,40 +346,59 @@ def main():
     else:
         start, end = 1, 3
 
+    # 每完成一页/一个作品就保存, 被 kill 或二次 Ctrl-C 也不丢进度 / save after every page
+    # and artwork so a kill or a second Ctrl-C loses at most the in-flight work
+    def checkpoint():
+        save_progress(save_dir, {
+            "keyword": keyword,
+            "page_range": [start, end],
+            "pages_done": sorted(done_pages),
+            "done_ids": sorted(done_ids),
+            "failed_ids": sorted(failed_ids),
+            "pending_ids": sorted(pending_ids - done_ids - failed_ids),
+        })
+
     pages_to_search = [p for p in range(start, end + 1)
                        if not (args.resume and p in done_pages)]
     if args.resume and not pages_to_search:
         print("所有页已搜索完成 / All pages already searched", flush=True)
 
-    artworks, total, had_error = [], 0, False
+    artworks, total, had_error, interrupted = [], 0, False, False
     if pages_to_search:
         with ThreadPoolExecutor(max_workers=args.search_workers) as pool:
             futures = {pool.submit(search_task, keyword, p): p
                        for p in pages_to_search}
             got = 0
-            for fut in as_completed(futures):
-                page, data, t, err = fut.result()
-                got += 1
-                if err:
-                    had_error = True
-                    print(f"搜索第 {page} 页失败 / Search page {page} failed: {err} "
-                          f"(其余页已停止, 进度已保存 / remaining pages stopped, progress saved)",
-                          file=sys.stderr)
-                    continue
-                if data is None:
-                    continue
-                if t and not total:
-                    total = t
-                    max_pages = (total + 59) // 60
-                    if end > max_pages:
-                        print(f"该关键词共 {max_pages} 页, 已自动截断 / "
-                              f"keyword has {max_pages} pages max; truncated", flush=True)
-                        end = max_pages
-                artworks.extend(data)
-                pending_ids.update(a["id"] for a in data if a and a.get("id"))
-                done_pages.add(page)
-                print(f"搜索进度 / Search progress {got}/{len(futures)} "
-                      f"(第 {page} 页完成 / page {page} done)", flush=True)
+            try:
+                for fut in as_completed(futures):
+                    page, data, t, err = fut.result()
+                    got += 1
+                    if err:
+                        had_error = True
+                        print(f"搜索第 {page} 页失败 / Search page {page} failed: {err} "
+                              f"(其余页已停止, 进度已保存 / remaining pages stopped, progress saved)",
+                              file=sys.stderr)
+                        continue
+                    if data is None:
+                        continue
+                    if t and not total:
+                        total = t
+                        max_pages = (total + 59) // 60
+                        if end > max_pages:
+                            print(f"该关键词共 {max_pages} 页, 已自动截断 / "
+                                  f"keyword has {max_pages} pages max; truncated", flush=True)
+                            end = max_pages
+                    artworks.extend(data)
+                    pending_ids.update(a["id"] for a in data if a and a.get("id"))
+                    done_pages.add(page)
+                    print(f"搜索进度 / Search progress {got}/{len(futures)} "
+                          f"(第 {page} 页完成 / page {page} done)", flush=True)
+                    checkpoint()
+            except KeyboardInterrupt:
+                STOP_SEARCH.set()
+                interrupted = True
+                print("已中断, 停止剩余搜索 / Interrupted; stopping remaining searches",
+                      file=sys.stderr, flush=True)
 
     if total:
         max_pages = (total + 59) // 60
@@ -408,7 +427,7 @@ def main():
         print("没有需要下载的作品 / Nothing to download", flush=True)
 
     stopped = False
-    if ids and not had_error:
+    if ids and not had_error and not interrupted:
         retry_n = len(failed_ids & set(ids))
         print(f"待下载 {len(ids)} 个作品 (已完成 {len(done_ids)} 个, 重试 {retry_n} 个) / "
               f"{len(ids)} to download ({len(done_ids)} done, {retry_n} retry)", flush=True)
@@ -416,8 +435,10 @@ def main():
         futures = {pool.submit(download_artwork, iid, save_dir): iid
                    for iid in ids}
         done_n, consec_fail = 0, 0
+        handled = set()
         try:
             for fut in as_completed(futures):
+                handled.add(fut)
                 iid, ok, msg = fut.result()
                 done_n += 1
                 print(f"[{done_n}/{len(futures)}] {msg}", flush=True)
@@ -428,27 +449,36 @@ def main():
                 else:
                     failed_ids.add(iid)
                     consec_fail += 1
-                    if consec_fail >= 10:
-                        stopped = True
-                        print("连续失败 10 次, 已停止下载, 进度已保存 / "
-                              "10 consecutive failures; stopped, progress saved. "
-                              "用 --resume 继续 / use --resume to continue",
-                              file=sys.stderr)
-                        for f in futures:
-                            f.cancel()
-                        break
+                checkpoint()
+                if consec_fail >= 10:
+                    stopped = True
+                    print("连续失败 10 次, 已停止下载, 进度已保存 / "
+                          "10 consecutive failures; stopped, progress saved. "
+                          "用 --resume 继续 / use --resume to continue",
+                          file=sys.stderr)
+                    break
+        except KeyboardInterrupt:
+            interrupted = True
+            print("已中断, 等待进行中的下载结束后保存进度 / Interrupted; saving progress "
+                  "after in-flight downloads finish", file=sys.stderr, flush=True)
         finally:
+            for f in futures:
+                f.cancel()
             pool.shutdown(wait=True)
+        # 停止时还在进行、随后下载成功的也记下来 / keep downloads that finished during shutdown
+        for f in futures:
+            if f not in handled and not f.cancelled():
+                iid, ok, _ = f.result()
+                if ok:
+                    done_ids.add(iid)
+                    failed_ids.discard(iid)
 
-    save_progress(save_dir, {
-        "keyword": keyword,
-        "page_range": [start, end],
-        "pages_done": sorted(done_pages),
-        "done_ids": sorted(done_ids),
-        "failed_ids": sorted(failed_ids),
-        "pending_ids": sorted(pending_ids - done_ids - failed_ids),
-    })
+    checkpoint()
 
+    if interrupted:
+        print(f"已中断, 进度已保存 / Interrupted, progress saved. "
+              f"继续请运行 --resume, 图片目录 / dir: {save_dir}", file=sys.stderr)
+        sys.exit(130)
     if failed_ids:
         print(f"完成 (有 {len(failed_ids)} 个失败) / Done with {len(failed_ids)} failure(s). "
               f"图片目录 / dir: {save_dir}")
