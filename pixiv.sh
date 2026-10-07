@@ -9,10 +9,10 @@ ENV_FILE="$DIR/.env"
 count_accounts() {
     "$PY" -c "
 import sys, argparse
-sys.path.insert(0, '$DIR')
+sys.path.insert(0, sys.argv[1])
 import pixiv_crawler as p
 print(len(p.load_cookies(argparse.Namespace(cookie=''))))
-" 2>/dev/null || echo 0
+" "$DIR" 2>/dev/null || echo 0
 }
 
 new_task() {
@@ -80,10 +80,12 @@ EOF
         return
     fi
     if [ ! -f "$ENV_FILE" ]; then
-        printf '# Pixiv Cookie 配置 / config (此文件勿提交 git / never commit this file)\n' > "$ENV_FILE"
+        (umask 077; printf '# Pixiv Cookie 配置 / config (此文件勿提交 git / never commit this file)\n' > "$ENV_FILE")
     fi
-    echo "PIXIV_PHPSESSID=$val" >> "$ENV_FILE"
     chmod 600 "$ENV_FILE"
+    # 末尾没有换行时先补一个, 否则新值会接在上一行后面 / keep the new entry on its own line
+    [ -n "$(tail -c 1 "$ENV_FILE")" ] && echo >> "$ENV_FILE"
+    echo "PIXIV_PHPSESSID=$val" >> "$ENV_FILE"
     echo "已添加 / Added to $ENV_FILE (当前共 total $(count_accounts) 个账号/accounts)"
 }
 
@@ -92,13 +94,13 @@ show_cookies() {
     echo "已配置的账号 / Configured accounts:"
     "$PY" -c "
 import sys, argparse
-sys.path.insert(0, '$DIR')
+sys.path.insert(0, sys.argv[1])
 import pixiv_crawler as p
 cs = p.load_cookies(argparse.Namespace(cookie=''))
 for i, c in enumerate(cs, 1):
     print(f'  {i}) {c[:12]}... (len {len(c)})')
 print(f'  共 {len(cs)} 个 / total {len(cs)}')
-" 2>/dev/null
+" "$DIR" 2>/dev/null
 }
 
 while true; do

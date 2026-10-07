@@ -24,6 +24,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import socket
 import sys
 import threading
@@ -326,7 +327,12 @@ def main():
           f"Loaded {len(cookies)} account(s), rotating per request", flush=True)
 
     keyword = args.keyword.strip()
-    save_dir = os.path.join(os.path.expanduser(args.save_dir), re.sub(r'[\\/:*?"<>|]', "_", keyword))
+    if not keyword:
+        ap.error("关键词不能为空 / keyword must not be empty")
+    dirname = re.sub(r'[\\/:*?"<>|]', "_", keyword)
+    if not dirname.strip("."):
+        dirname = dirname.replace(".", "_")
+    save_dir = os.path.join(os.path.expanduser(args.save_dir), dirname)
     os.makedirs(save_dir, exist_ok=True)
 
     prog = load_progress(save_dir) if args.resume else \
@@ -395,9 +401,10 @@ def main():
                     got += 1
                     if err:
                         had_error = True
-                        print(f"搜索第 {page} 页失败 / Search page {page} failed: {err} "
-                              f"(其余页已停止, 进度已保存 / remaining pages stopped, progress saved)",
-                              file=sys.stderr)
+                        if err != "cancelled":
+                            print(f"搜索第 {page} 页失败 / Search page {page} failed: {err} "
+                                  f"(其余页已停止, 进度已保存 / remaining pages stopped, progress saved)",
+                                  file=sys.stderr)
                         continue
                     if data is None:
                         continue
@@ -434,9 +441,12 @@ def main():
             ids.append(iid)
 
     if had_error:
+        q = shlex.quote if os.name != "nt" else (lambda x: f'"{x}"')
+        cmd = f"python3 {q(sys.argv[0])} {q(keyword)} --resume"
+        if args.save_dir != ap.get_default("save_dir"):
+            cmd += f" --save-dir {q(args.save_dir)}"
         print(f"搜索出错, 保留进度, 不再继续爬取 / Search error: progress saved, "
-              f"no further crawling.\n修复后运行 / After fixing, run: "
-              f"python3 {os.path.basename(__file__)} {keyword} --resume",
+              f"no further crawling.\n修复后运行 / After fixing, run: {cmd}",
               file=sys.stderr)
     elif not ids and not pages_to_search:
         print("没有需要下载的作品 / Nothing to download", flush=True)
@@ -494,14 +504,16 @@ def main():
         print(f"已中断, 进度已保存 / Interrupted, progress saved. "
               f"继续请运行 --resume, 图片目录 / dir: {save_dir}", file=sys.stderr)
         sys.exit(130)
-    if failed_ids:
+    if had_error or stopped:
+        print(f"已停止, 进度已保存 / Stopped, progress saved. "
+              f"继续请运行 --resume, 图片目录 / dir: {save_dir}")
+        sys.exit(1)
+    elif failed_ids:
         print(f"完成 (有 {len(failed_ids)} 个失败) / Done with {len(failed_ids)} failure(s). "
               f"图片目录 / dir: {save_dir}")
         print("修复问题后运行 --resume 可继续 / Fix the issue and rerun with --resume",
               flush=True)
-    elif stopped:
-        print(f"已停止, 进度已保存 / Stopped, progress saved. "
-              f"继续请运行 --resume, 图片目录 / dir: {save_dir}")
+        sys.exit(1)
     else:
         print(f"完成! 图片已保存到 / Done! Saved to: {save_dir}")
 
