@@ -313,8 +313,8 @@ def main():
                     help="搜索并发线程数 / search threads, 默认 default 3")
     args = ap.parse_args()
 
-    if args.delay < 0:
-        ap.error("--delay 不能为负数 / --delay must not be negative")
+    if not 0 <= args.delay < float("inf"):
+        ap.error("--delay 必须是非负有限数 / --delay must be a finite number >= 0")
 
     global DELAY, POOL
     DELAY = args.delay
