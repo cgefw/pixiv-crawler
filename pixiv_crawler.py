@@ -274,7 +274,7 @@ def load_progress(save_dir):
                 return json.load(f)
         except (OSError, json.JSONDecodeError):
             pass
-    return {"pages_done": [], "done_ids": [], "failed_ids": [], "pending_ids": []}
+    return {"pages_done": [], "done_ids": [], "failed_ids": []}
 
 
 def save_progress(save_dir, prog):
@@ -326,7 +326,7 @@ def main():
     os.makedirs(save_dir, exist_ok=True)
 
     prog = load_progress(save_dir) if args.resume else \
-        {"pages_done": [], "done_ids": [], "failed_ids": [], "pending_ids": []}
+        {"pages_done": [], "done_ids": [], "failed_ids": []}
     done_pages = set(prog.get("pages_done", []))
     done_ids = set(prog.get("done_ids", []))
     failed_ids = set(prog.get("failed_ids", []))
