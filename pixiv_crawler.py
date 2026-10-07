@@ -346,6 +346,18 @@ def main():
     else:
         start, end = 1, 3
 
+    # 每完成一页/一个作品就保存, 被 kill 或二次 Ctrl-C 也不丢进度 / save after every page
+    # and artwork so a kill or a second Ctrl-C loses at most the in-flight work
+    def checkpoint():
+        save_progress(save_dir, {
+            "keyword": keyword,
+            "page_range": [start, end],
+            "pages_done": sorted(done_pages),
+            "done_ids": sorted(done_ids),
+            "failed_ids": sorted(failed_ids),
+            "pending_ids": sorted(pending_ids - done_ids - failed_ids),
+        })
+
     pages_to_search = [p for p in range(start, end + 1)
                        if not (args.resume and p in done_pages)]
     if args.resume and not pages_to_search:
@@ -381,6 +393,7 @@ def main():
                     done_pages.add(page)
                     print(f"搜索进度 / Search progress {got}/{len(futures)} "
                           f"(第 {page} 页完成 / page {page} done)", flush=True)
+                    checkpoint()
             except KeyboardInterrupt:
                 STOP_SEARCH.set()
                 interrupted = True
@@ -422,8 +435,10 @@ def main():
         futures = {pool.submit(download_artwork, iid, save_dir): iid
                    for iid in ids}
         done_n, consec_fail = 0, 0
+        handled = set()
         try:
             for fut in as_completed(futures):
+                handled.add(fut)
                 iid, ok, msg = fut.result()
                 done_n += 1
                 print(f"[{done_n}/{len(futures)}] {msg}", flush=True)
@@ -434,13 +449,14 @@ def main():
                 else:
                     failed_ids.add(iid)
                     consec_fail += 1
-                    if consec_fail >= 10:
-                        stopped = True
-                        print("连续失败 10 次, 已停止下载, 进度已保存 / "
-                              "10 consecutive failures; stopped, progress saved. "
-                              "用 --resume 继续 / use --resume to continue",
-                              file=sys.stderr)
-                        break
+                checkpoint()
+                if consec_fail >= 10:
+                    stopped = True
+                    print("连续失败 10 次, 已停止下载, 进度已保存 / "
+                          "10 consecutive failures; stopped, progress saved. "
+                          "用 --resume 继续 / use --resume to continue",
+                          file=sys.stderr)
+                    break
         except KeyboardInterrupt:
             interrupted = True
             print("已中断, 等待进行中的下载结束后保存进度 / Interrupted; saving progress "
@@ -449,15 +465,15 @@ def main():
             for f in futures:
                 f.cancel()
             pool.shutdown(wait=True)
+        # 停止时还在进行、随后下载成功的也记下来 / keep downloads that finished during shutdown
+        for f in futures:
+            if f not in handled and not f.cancelled():
+                iid, ok, _ = f.result()
+                if ok:
+                    done_ids.add(iid)
+                    failed_ids.discard(iid)
 
-    save_progress(save_dir, {
-        "keyword": keyword,
-        "page_range": [start, end],
-        "pages_done": sorted(done_pages),
-        "done_ids": sorted(done_ids),
-        "failed_ids": sorted(failed_ids),
-        "pending_ids": sorted(pending_ids - done_ids - failed_ids),
-    })
+    checkpoint()
 
     if interrupted:
         print(f"已中断, 进度已保存 / Interrupted, progress saved. "
