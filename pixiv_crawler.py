@@ -274,7 +274,7 @@ def load_progress(save_dir):
                 return json.load(f)
         except (OSError, json.JSONDecodeError):
             pass
-    return {"pages_done": [], "done_ids": [], "failed_ids": []}
+    return {"pages_done": [], "done_ids": [], "failed_ids": [], "pending_ids": []}
 
 
 def save_progress(save_dir, prog):
@@ -326,10 +326,12 @@ def main():
     os.makedirs(save_dir, exist_ok=True)
 
     prog = load_progress(save_dir) if args.resume else \
-        {"pages_done": [], "done_ids": [], "failed_ids": []}
+        {"pages_done": [], "done_ids": [], "failed_ids": [], "pending_ids": []}
     done_pages = set(prog.get("pages_done", []))
     done_ids = set(prog.get("done_ids", []))
     failed_ids = set(prog.get("failed_ids", []))
+    # 已搜到但还没下载的作品, 随 pages_done 一起保存 / found but not yet downloaded
+    pending_ids = set(prog.get("pending_ids", []))
 
     if args.pages is not None:
         try:
@@ -374,6 +376,7 @@ def main():
                               f"keyword has {max_pages} pages max; truncated", flush=True)
                         end = max_pages
                 artworks.extend(data)
+                pending_ids.update(a["id"] for a in data if a and a.get("id"))
                 done_pages.add(page)
                 print(f"搜索进度 / Search progress {got}/{len(futures)} "
                       f"(第 {page} 页完成 / page {page} done)", flush=True)
@@ -391,8 +394,8 @@ def main():
         if iid and iid not in done_ids and iid not in seen:
             seen.add(iid)
             ids.append(iid)
-    for iid in failed_ids:
-        if iid not in seen:
+    for iid in list(pending_ids) + list(failed_ids):
+        if iid not in done_ids and iid not in seen:
             seen.add(iid)
             ids.append(iid)
 
@@ -443,6 +446,7 @@ def main():
         "pages_done": sorted(done_pages),
         "done_ids": sorted(done_ids),
         "failed_ids": sorted(failed_ids),
+        "pending_ids": sorted(pending_ids - done_ids - failed_ids),
     })
 
     if failed_ids:
